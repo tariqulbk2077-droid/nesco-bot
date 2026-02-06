@@ -1,68 +1,21 @@
 import os
 import time
+import threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
-def get_nesco_data(meter_no):
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(options=options)
-    
-    try:
-        driver.get("https://customer.nesco.gov.bd/")
-        time.sleep(2)
-        
-        # মিটার নম্বর ইনপুট
-        driver.find_element(By.ID, "reference_no").send_keys(meter_no)
-        
-        # রিচার্জ হিস্ট্রি ক্লিক
-        driver.find_element(By.XPATH, "//button[contains(text(), 'রিচার্জ হিস্ট্রি')]").click()
-        time.sleep(3)
-        
-        # ডাটা সংগ্রহ
-        name = driver.find_element(By.ID, "customer_name").get_attribute("value")
-        consumer = driver.find_element(By.ID, "customer_no").get_attribute("value")
-        balance = driver.find_element(By.ID, "current_balance").get_attribute("value")
-        
-        # রিচার্জ টেবিলের প্রথম রো এর ডাটা
-        last_recharge = driver.find_element(By.XPATH, "//table[@id='recharge_history_table']/tbody/tr[1]").text
-        
-        return f"👤 নাম: {name}\n🆔 কনজ্যুমার নং: {consumer}\n💰 ব্যালেন্স: {balance} টাকা\n🕒 লাস্ট হিস্ট্রি: {last_recharge}"
-    except:
-        return "❌ তথ্য পাওয়া যায়নি। নম্বরটি সঠিক কিনা চেক করুন।"
-    finally:
-        driver.quit()
-
-async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message.text
-    await update.message.reply_text("অপেক্ষা করুন, ডাটা আনা হচ্ছে...")
-    result = get_nesco_data(msg)
-    await update.message.reply_text(result)
-
-if __name__ == '__main__':
-    token = os.environ.get("BOT_TOKEN")
-    app = Application.builder().token(token).build()
-    app.add_handler(MessageHandler(filters.TEXT, reply))
-    app.run_polling()
-  
-
-
-import os
-import threading
-from flask import Flask # নতুন যুক্ত হবে
-# ... আপনার বাকি ইমপোর্টগুলো ...
-
-# একটি ছোট ওয়েব সার্ভার তৈরি (Koyeb এর জন্য)
+# Koyeb Health Check এর জন্য Flask সার্ভার
 web_app = Flask('')
 
 @web_app.route('/')
 def home():
-    return "Bot is running!"
+    return "Bot is active!"
 
 def run():
     web_app.run(host='0.0.0.0', port=8000)
@@ -71,13 +24,52 @@ def keep_alive():
     t = threading.Thread(target=run)
     t.start()
 
-# ... আপনার গেট ডাটা ফাংশন এবং অন্যান্য কোড ...
+# NESCO স্ক্র্যাপিং ফাংশন
+def get_nesco_data(meter_no):
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    try:
+        driver.get("https://customer.nesco.gov.bd/")
+        time.sleep(3)
+        
+        # মিটার নম্বর ইনপুট বক্স খুঁজে বের করা
+        input_box = driver.find_element(By.CSS_SELECTOR, "input[placeholder*='গ্রাহক নম্বর']")
+        input_box.send_keys(meter_no)
+        
+        # রিচার্জ হিস্ট্রি বাটন ক্লিক
+        btn = driver.find_element(By.XPATH, "//button[contains(text(), 'রিচার্জ হিস্ট্রি')]")
+        btn.click()
+        time.sleep(5) # ডাটা লোড হতে সময় দিন
+        
+        # ডাটা সংগ্রহ
+        res_name = driver.find_element(By.XPATH, "/html/body/div[1]/div[2]/div/div[2]/div/div[2]/div/div/div[2]/div[1]/div/input").get_attribute("value")
+        res_balance = driver.find_element(By.XPATH, "/html/body/div[1]/div[2]/div/div[2]/div/div[2]/div/div/div[2]/div[6]/div/input").get_attribute("value")
+        
+        return f"👤 নাম: {res_name}\n💰 ব্যালেন্স: {res_balance} টাকা"
+    except Exception as e:
+        return "❌ তথ্য খুঁজে পাওয়া যায়নি। সাইটে সমস্যা বা নম্বরটি ভুল হতে পারে।"
+    finally:
+        driver.quit()
+
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meter = update.message.text
+    if meter.isdigit():
+        await update.message.reply_text(f"অপেক্ষা করুন, {meter} এর তথ্য খোঁজা হচ্ছে...")
+        result = get_nesco_data(meter)
+        await update.message.reply_text(result)
+    else:
+        await update.message.reply_text("দয়া করে সঠিক মিটার নম্বরটি লিখুন।")
 
 if __name__ == '__main__':
-    keep_alive() # এটি পোর্ট ৮০০০ চালু করবে
+    keep_alive() # ৮০০০ পোর্ট সচল করবে
     
     token = os.environ.get("BOT_TOKEN")
     app = Application.builder().token(token).build()
-    app.add_handler(MessageHandler(filters.TEXT, reply))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
     app.run_polling()
     

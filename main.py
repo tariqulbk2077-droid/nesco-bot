@@ -4,37 +4,36 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 import google.generativeai as genai
 
-# Koyeb Health Check-এর জন্য ছোট সার্ভার
+# Koyeb-এর জন্য ওয়েব সার্ভার
 web_app = Flask('')
 @web_app.route('/')
-def home(): return "AI Bot is Running!"
+def home(): return "Bot Active"
 def run(): web_app.run(host='0.0.0.0', port=8000)
 
 # Gemini AI সেটআপ
-api_key = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash') # লেটেস্ট এবং ফাস্ট মডেল
+gemini_key = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=gemini_key)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    if not user_text: return
-
+async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_msg = update.message.text
+    if not user_msg: return
+    
     await update.message.reply_chat_action("typing")
     
     try:
-        # AI কে নির্দেশ দেওয়া হচ্ছে কীভাবে কথা বলবে
-        prompt = f"তুমি একজন বন্ধুত্বপূর্ণ বাঙালি সহকারী। ব্যবহারকারী বলেছে: '{user_text}'। তার সাথে বন্ধুসুলভভাবে কথা বলো এবং প্রয়োজনীয় তথ্য বা দাম জানাও।"
+        # AI কে তথ্য ও চ্যাটিংয়ের জন্য প্রম্পট দেওয়া
+        prompt = f"ব্যবহারকারী বলেছে: {user_msg}। তুমি একজন স্মার্ট অ্যাসিস্ট্যান্ট হিসেবে তাকে বাংলায় উত্তর দাও।"
         response = model.generate_content(prompt)
         await update.message.reply_text(response.text)
     except Exception as e:
-        print(f"Error: {e}")
-        await update.message.reply_text("দুঃখিত বন্ধু, আমি এই মুহূর্তে উত্তরটি খুঁজে পাচ্ছি না। একটু পরে আবার বলবে কি?")
+        # এপিআই কী মিসিং থাকলে বা এরর হলে এই মেসেজ দেখাবে
+        await update.message.reply_text("এপিআই কী (API Key) সঠিক নেই অথবা সার্ভারে সমস্যা হচ্ছে।")
 
 if __name__ == '__main__':
-    # পোর্ট ৮০০০ সচল রাখা
     threading.Thread(target=run).start()
     
-    token = os.environ.get("BOT_TOKEN")
-    app = Application.builder().token(token).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_message))
+    bot_token = os.environ.get("BOT_TOKEN")
+    app = Application.builder().token(bot_token).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
     app.run_polling()

@@ -50,3 +50,34 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT, reply))
     app.run_polling()
   
+
+
+import os
+import threading
+from flask import Flask # নতুন যুক্ত হবে
+# ... আপনার বাকি ইমপোর্টগুলো ...
+
+# একটি ছোট ওয়েব সার্ভার তৈরি (Koyeb এর জন্য)
+web_app = Flask('')
+
+@web_app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    web_app.run(host='0.0.0.0', port=8000)
+
+def keep_alive():
+    t = threading.Thread(target=run)
+    t.start()
+
+# ... আপনার গেট ডাটা ফাংশন এবং অন্যান্য কোড ...
+
+if __name__ == '__main__':
+    keep_alive() # এটি পোর্ট ৮০০০ চালু করবে
+    
+    token = os.environ.get("BOT_TOKEN")
+    app = Application.builder().token(token).build()
+    app.add_handler(MessageHandler(filters.TEXT, reply))
+    app.run_polling()
+    

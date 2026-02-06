@@ -2,41 +2,39 @@ import os, threading
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-# এখানে আমরা একটি AI লাইব্রেরি ব্যবহার করব যা সার্চ করতে পারে
-import google.generativeai as genai 
+import google.generativeai as genai
 
-# Koyeb Health Check
+# Koyeb Health Check-এর জন্য ছোট সার্ভার
 web_app = Flask('')
 @web_app.route('/')
-def home(): return "AI Bot is alive!"
+def home(): return "AI Bot is Running!"
 def run(): web_app.run(host='0.0.0.0', port=8000)
 
-# Gemini AI সেটিংস (এটি সার্চ এবং চ্যাট দুটাই করবে)
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-pro')
+# Gemini AI সেটআপ
+api_key = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel('gemini-1.5-flash') # লেটেস্ট এবং ফাস্ট মডেল
 
 async def handle_ai_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
-    
-    # বটকে একটু সময় দিতে হবে প্রসেস করার জন্য
+    if not user_text: return
+
     await update.message.reply_chat_action("typing")
     
     try:
-        # AI কে বলা হচ্ছে ব্যবহারকারীর প্রশ্নের উত্তর দিতে (সার্চসহ)
-        prompt = f"তুমি একজন সাহায্যকারী সহকারী। ব্যবহারকারী প্রশ্ন করেছে: {user_text}। যদি দাম বা তথ্য জানতে চায় তবে সঠিক ডাটা দাও, আর ক্যাজুয়াল কথা হলে বন্ধুসুলভ উত্তর দাও।"
+        # AI কে নির্দেশ দেওয়া হচ্ছে কীভাবে কথা বলবে
+        prompt = f"তুমি একজন বন্ধুত্বপূর্ণ বাঙালি সহকারী। ব্যবহারকারী বলেছে: '{user_text}'। তার সাথে বন্ধুসুলভভাবে কথা বলো এবং প্রয়োজনীয় তথ্য বা দাম জানাও।"
         response = model.generate_content(prompt)
         await update.message.reply_text(response.text)
     except Exception as e:
-        await update.message.reply_text("দুঃখিত, আমি এখন উত্তর দিতে পারছি না। পরে চেষ্টা করুন।")
+        print(f"Error: {e}")
+        await update.message.reply_text("দুঃখিত বন্ধু, আমি এই মুহূর্তে উত্তরটি খুঁজে পাচ্ছি না। একটু পরে আবার বলবে কি?")
 
 if __name__ == '__main__':
+    # পোর্ট ৮০০০ সচল রাখা
     threading.Thread(target=run).start()
     
-    # টেলিগ্রাম বট টোকেন
     token = os.environ.get("BOT_TOKEN")
     app = Application.builder().token(token).build()
-    
-    # সব টেক্সট মেসেজ হ্যান্ডেল করবে
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ai_message))
-    
     app.run_polling()
